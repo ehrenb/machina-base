@@ -1,11 +1,11 @@
 name: Docker Image CI
 
 on:
-  workflow_run:
-    workflows: ["Pylint"]
-    branches: [main]
-    types: 
-      - completed
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
 jobs:
 
   build:
