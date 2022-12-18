@@ -32,5 +32,5 @@ jobs:
           context: .
           file: Dockerfile.alpine
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: base-alpine-${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
