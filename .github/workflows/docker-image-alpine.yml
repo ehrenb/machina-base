@@ -1,10 +1,15 @@
 name: Publish Docker image (Alpine)
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches:
+      - 'main'
+    tags:
+      - 'v*'
   pull_request:
-    branches: [ "main" ]
+    branches:
+      - 'main'
     
 jobs:
   push_to_registry:
