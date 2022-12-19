@@ -32,5 +32,5 @@ jobs:
           context: .
           file: Dockerfile.ubuntu
           push: true
-          tags: ${{ steps.meta.outputs.tags }}-ubuntu,latest-ubuntu
+          tags: ${{ steps.meta.outputs.tags }}-ubuntu
           labels: ${{ steps.meta.outputs.labels }}
