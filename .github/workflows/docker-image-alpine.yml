@@ -1,4 +1,4 @@
-name: Publish Docker image (Ubuntu)
+name: Publish Docker image (Alpine)
 
 on:
   push:
