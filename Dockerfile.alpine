@@ -38,6 +38,9 @@ RUN pip3 install --trusted-host pypi.org \
                 -r /tmp/requirements.txt
 RUN rm /tmp/requirements.txt
 
+RUN mkdir /schemas
+COPY binary.json /schemas/
+
 COPY machina /machina
 COPY ./wait-for-it.sh /machina/wait-for-it.sh
 RUN cd /machina && python3 setup.py install
