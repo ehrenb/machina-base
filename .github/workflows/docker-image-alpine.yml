@@ -43,6 +43,7 @@ jobs:
       - name: Trigger Workflow
         uses: actions/github-script@v6
         with:
+          github-token: ${{ secrets.PAT_TOKEN }}
           script: |
             github.rest.actions.createWorkflowDispatch({
               owner: 'ehrenb',
