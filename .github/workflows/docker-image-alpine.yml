@@ -40,14 +40,14 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           
-      - name: Trigger Workflow
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.PAT_TOKEN }}
-          script: |
-            github.rest.actions.createWorkflowDispatch({
-              owner: 'ehrenb',
-              repo: 'machina-zip',
-              workflow_id: 'docker-image.yml',
-              ref: 'main',
-            })
+#       - name: Trigger Workflow
+#         uses: actions/github-script@v6
+#         with:
+#           github-token: ${{ secrets.PAT_TOKEN }}
+#           script: |
+#             github.rest.actions.createWorkflowDispatch({
+#               owner: 'ehrenb',
+#               repo: 'machina-zip',
+#               workflow_id: 'docker-image.yml',
+#               ref: 'main',
+#             })
