@@ -45,8 +45,8 @@ jobs:
         with:
           script: |
             github.rest.actions.createWorkflowDispatch({
-              owner: ehrenb,
-              repo: machina-zip,
+              owner: 'ehrenb',
+              repo: 'machina-zip',
               workflow_id: 'docker-image.yml',
               ref: 'main',
             })
