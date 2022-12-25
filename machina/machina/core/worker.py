@@ -4,47 +4,20 @@ import os
 from pprint import pformat
 import threading
 import time
+import sys
 
 import jsonschema
+import pika
 import pyorient
-
-from machina.core.api import BaseAPI
-from machina.core.models import init_orientdb
+from pyorient.ogm import Graph, Config
 
 # Import any new Nodes or Relationships here, they will be
 # Automatically created with a call to init_orientdb()
 
-# Nodes
-from machina.core.models import Node
+# import all Nodes and Relationships
+from machina.core.models import *
 
-from machina.core.models.nodes.artifact import Artifact
-from machina.core.models.nodes.apk import APK
-from machina.core.models.nodes.dex import Dex
-from machina.core.models.nodes.elf import Elf
-from machina.core.models.nodes.eml import Eml
-from machina.core.models.nodes.excel import Excel
-from machina.core.models.nodes.gzip import Gzip
-from machina.core.models.nodes.html import HTML
-from machina.core.models.nodes.jar import Jar
-from machina.core.models.nodes.jpeg import JPEG
-from machina.core.models.nodes.macho import Macho
-from machina.core.models.nodes.memory_dump import MemoryDump
-from machina.core.models.nodes.msg import Msg
-from machina.core.models.nodes.pe import PE
-from machina.core.models.nodes.png import PNG
-from machina.core.models.nodes.powerpoint import Powerpoint
-from machina.core.models.nodes.rtf import RTF
-from machina.core.models.nodes.tar import Tar
-from machina.core.models.nodes.zip import Zip
-from machina.core.models.nodes.url import URL
-from machina.core.models.nodes.jffs2 import JFFS2
-
-# Relationships
-from machina.core.models.relationships.extracts import Extracts
-from machina.core.models.relationships.retypedto import RetypedTo
-from machina.core.models.relationships.similar import Similar
-
-class Worker(BaseAPI):
+class Worker():
     """
         *types: the data types that a worker can handle, tagged by the Identifier
         *a queue whose name is the class' name: for direct access to the queue
@@ -68,50 +41,55 @@ class Worker(BaseAPI):
             self.logger.error(f"{t} is not configured as a type in types.json")
             raise Exception
 
-        # RabbitMQ Connection info
-        self.api = BaseAPI(**self.config['rabbitmq'])
-
         # OrientDB Connection
         self.logger.debug(f"OrientDB cfg: {pformat(self.config['orientdb'])}")
-        # Init the database
-        self.graph = init_orientdb(host=self.config['orientdb']['orientdb_host'],
-            port=self.config['orientdb']['orientdb_port'],
-            name=self.config['orientdb']['orientdb_name'],
-            user=self.config['orientdb']['orientdb_user'],
-            password=self.config['orientdb']['orientdb_pass'])
+        self.graph = self.get_graph()
 
-        self.channel = self.api.connection.channel()
+        # if regular worker, bind OGM classes,
+        # Initializer does initial OGM creation
+        if self.cls_name != 'Initializer':
+            self.graph.include(Node.registry)
+            self.graph.include(Relationship.registry)
 
-        # reduce Pika logging level
-        logging.getLogger('pika').setLevel(logging.ERROR)
+        # Initializer does no queue consumption, so
+        # dont create a connection or queue for it
+        if self.cls_name != 'Initializer':
 
-        # The queue to bind to is the name of the class
-        bind_queue = self.cls_name
+            # RabbitMQ Connection info
+            # note this is not thread-safe
+            self.rmq_conn = self.get_rmq_conn()
+            self.rmq_recv_channel = self.rmq_conn.channel()
 
-        # Initialize an exchange
-        self.channel.exchange_declare('machina')
+            # reduce Pika logging level
+            logging.getLogger('pika').setLevel(logging.ERROR)
 
-        # Initialize direct queue w/ subclass name
-        self.logger.info(f"Binding to direct queue: {bind_queue}")
-        self.channel.queue_declare(self.cls_name, durable=True)
+            # The queue to bind to is the name of the class
+            bind_queue = self.cls_name
 
-        # Ensure that the worker's queue is bound to the exchange
-        self.channel.queue_bind(exchange='machina',
-                                queue=self.cls_name)
+            # Initialize an exchange
+            self.rmq_recv_channel.exchange_declare('machina')
 
-        # multiple-bindings approach:
-        # https://www.rabbitmq.com/tutorials/tutorial-four-python.html
-        # Bind using type strings as routing_keys
-        # Publish using only a routing_key should go to all queues
-        # that are bound to that routing_key
-        for t in self.types:
-            self.channel.queue_bind(exchange='machina',
-                                    queue=self.cls_name,
-                                    routing_key=t)
+            # Initialize direct queue w/ subclass name
+            self.logger.info(f"Binding to direct queue: {bind_queue}")
+            self.rmq_recv_channel.queue_declare(self.cls_name, durable=True)
 
-        self.channel.basic_qos(prefetch_count=1)
-        self.channel.basic_consume(self.cls_name,
-            on_message_callback=self._callback)
+            # Ensure that the worker's queue is bound to the exchange
+            self.rmq_recv_channel.queue_bind(exchange='machina',
+                                    queue=self.cls_name)
+
+            # multiple-bindings approach:
+            # https://www.rabbitmq.com/tutorials/tutorial-four-python.html
+            # Bind using type strings as routing_keys
+            # Publish using only a routing_key should go to all queues
+            # that are bound to that routing_key
+            for t in self.types:
+                self.rmq_recv_channel.queue_bind(exchange='machina',
+                                        queue=self.cls_name,
+                                        routing_key=t)
+
+            self.rmq_recv_channel.basic_qos(prefetch_count=1)
+            self.rmq_recv_channel.basic_consume(self.cls_name,
+                on_message_callback=self._callback)
 
     #############################################################
     # Privates
@@ -174,10 +152,10 @@ class Worker(BaseAPI):
         thread = threading.Thread(target=self.callback, args=(body, properties))
         thread.start()
         while thread.is_alive():
-            self.channel._connection.sleep(1.0)
+            self.rmq_recv_channel._connection.sleep(1.0)
         self.logger.info("exiting callback")
 
-        self.channel.basic_ack(delivery_tag=method.delivery_tag)
+        self.rmq_recv_channel.basic_ack(delivery_tag=method.delivery_tag)
 
     def _validate_body(self, body):
         """validate incoming messages from RabbitMQ"""
@@ -200,15 +178,50 @@ class Worker(BaseAPI):
 
     #############################################################
     # RabbitMQ Helpers
+    def get_rmq_conn(self, max_attempts=10, delay_seconds=1):
+        
+        rabbitmq_user = self.config['rabbitmq']['rabbitmq_user']
+        rabbitmq_password = self.config['rabbitmq']['rabbitmq_password']
+        rabbitmq_host = self.config['rabbitmq']['rabbitmq_host']
+        rabbitmq_port = self.config['rabbitmq']['rabbitmq_port']
+        rabbitmq_heartbeat = self.config['rabbitmq']['rabbitmq_heartbeat']
+
+        connection = None
+        credentials = pika.PlainCredentials(rabbitmq_user, rabbitmq_password)
+        parameters = pika.ConnectionParameters(rabbitmq_host,
+            int(rabbitmq_port),
+            '/',
+            credentials,
+            heartbeat=int(rabbitmq_heartbeat),
+            socket_timeout=2)
+
+        attempt = 0
+        while attempt < max_attempts:
+            try:
+                connection = pika.BlockingConnection(parameters)
+                break
+            except pika.exceptions.AMQPConnectionError as e:
+                self.logger.info(f"Attempt {attempt}/{max_attempts} to connect to RabbitMQ at {rabbitmq_host}:{rabbitmq_port}")
+                self.logger.warn("Error connecting to RabbitMQ")
+            
+            attempt += 1
+            time.sleep(delay_seconds)
+        
+        if not connection:
+            self.logger.error('max attempts exceeded')
+            sys.exit()
+
+        return connection
+
     def start_consuming(self):
         """start consuming"""
         self.logger.info(f'{self.cls_name} worker started')
         try:
-            self.channel.start_consuming()
+            self.rmq_recv_channel.start_consuming()
         except Exception as e:
             self.logger.error(e, exc_info=True)
-            self.channel.stop_consuming()
-        self.api.connection.close()
+            self.rmq_recv_channel.stop_consuming()
+        self.connection.close()
 
     def callback(self, data, properties):
         """implement in subclass"""
@@ -220,26 +233,52 @@ class Worker(BaseAPI):
 
     def publish(self, data, queues):
         """publish directly to a list of arbitrary queues"""
+        rmq_conn = self.get_rmq_conn()
         for q in queues:
             self.logger.info(f"publishing directly to {q}")
-            channel = self.get_channel(self.config['rabbitmq'])
-            channel.basic_publish(exchange='machina',
+            rmq_channel = rmq_conn.channel()
+            rmq_channel.basic_publish(
+                exchange='machina',
                 routing_key=q,
                 body=data)
-            channel.close()
+        rmq_conn.close()
 
-    def get_channel(self, config):
-        conn = self.get_connection(config)
-        ch = conn.channel()
-        return ch
-
-    def get_connection(self, config):
-        api = BaseAPI(**config)
-        return api.connection
     #############################################################
 
     #############################################################
     # DB Helpers
+
+    def get_graph(self, max_attempts=5, delay_seconds=1):
+        host = self.config['orientdb']['orientdb_host']
+        port = self.config['orientdb']['orientdb_port']
+        name = self.config['orientdb']['orientdb_name']
+        user = self.config['orientdb']['orientdb_user']
+        password = self.config['orientdb']['orientdb_pass']
+        
+        orientdb_url = f'{host}:{port}/{name}'
+        conf = Config.from_url(
+            orientdb_url, 
+            user, 
+            password)
+
+        attempts = 0
+        graph = None
+        while attempts < max_attempts:
+            try:
+                graph = Graph(conf)
+                break
+            except Exception as e:
+                self.logger.warn(e)
+            
+            attempts += 1
+            time.sleep(delay_seconds)
+
+        if not graph:
+            self.logger.error('max attempts to connect to graph exceeded')
+            sys.exit()
+
+        return graph
+
     def resolve_db_node_cls(self, resolved_type):
         """resolve class given a resolved machina type (e.g. in types.json)"""
         all_models = Node.__subclasses__()
@@ -249,7 +288,12 @@ class Worker(BaseAPI):
                 return c
         return None
 
-    def update_node(self, node_id, data, max_retries=10):
+    def update_node(
+        self, 
+        node_id,
+        data,
+        max_retries=10, 
+        delay_seconds=1):
         """
         wrap nodde/vertex updating with retries to circumvent stale state
         :param node_id: the node id to resolve
@@ -269,9 +313,16 @@ class Worker(BaseAPI):
             except pyorient.exceptions.PyOrientCommandException:
                 self.logger.warn(f"Retrying update_node attempt {attempts}/{max_retries}")
                 attempts += 1
-                time.sleep(1)
+                time.sleep(delay_seconds)
 
-    def create_edge(self, relationship, origin_node_id, destination_node_id, data={}, max_retries=10):
+    def create_edge(
+        self, 
+        relationship, 
+        origin_node_id, 
+        destination_node_id, 
+        data={}, 
+        max_retries=10, 
+        delay_seconds=1):
         """
         wrap create_edge in retries, as advised by
         http://orientdb.com/docs/last/Concurrency.html
@@ -295,7 +346,7 @@ class Worker(BaseAPI):
             except pyorient.exceptions.PyOrientCommandException:
                 self.logger.warn(f"Retrying create_edge attempt {attempts}/{max_retries}")
                 attempts += 1
-                time.sleep(1)
+                time.sleep(delay_seconds)
         return edge
     #############################################################
 
