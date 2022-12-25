@@ -37,6 +37,7 @@ from machina.core.models.nodes.rtf import RTF
 from machina.core.models.nodes.tar import Tar
 from machina.core.models.nodes.zip import Zip
 from machina.core.models.nodes.url import URL
+from machina.core.models.nodes.jffs2 import JFFS2
 
 # Relationships
 from machina.core.models.relationships.extracts import Extracts
