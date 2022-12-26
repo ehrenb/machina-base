@@ -4,6 +4,7 @@ import os
 from pprint import pformat
 import threading
 import time
+import typing
 import sys
 
 import jsonschema
@@ -18,10 +19,8 @@ from pyorient.ogm import Graph, Config
 from machina.core.models import *
 
 class Worker():
-    """
-        *types: the data types that a worker can handle, tagged by the Identifier
-        *a queue whose name is the class' name: for direct access to the queue
-    """
+    """Analysis worker base class"""
+
     next_queues = [] # passes data to another queue in the sequence, this should allow for chaining
     types = [] #indicates what queue to bind to, this should be completed in the subclass
 
@@ -94,7 +93,13 @@ class Worker():
     #############################################################
     # Privates
 
-    def _load_configs(self):
+    def _load_configs(self) -> dict:
+        """load configuration files from expected path, return as dictionary
+
+        :return: the configuration dictionary
+        :rtype: dict
+        """
+
         fdir = '/configs'
 
         paths_cfg_fp = os.path.join(fdir, 'paths.json')
@@ -135,20 +140,37 @@ class Worker():
                     types=types_cfg,
                     worker=worker_cfg)
 
-    def _load_schema(self):
-        """automatically resolve schema name based on class name"""
+    def _load_schema(self) -> dict:
+        """automatically resolve schema name based on class name
+
+        :return: the schema dictionary
+        :rtype: dict
+        """
         class_schema = os.path.join(self.config['paths']['schemas'], self.cls_name+'.json')
         with open(class_schema, 'r') as f:
             schema_data = json.load(f)
-
         return schema_data
 
-    def _callback(self, ch, method, properties, body):
-        """do last-second validation before handling the callback"""
+    def _callback(
+        self, 
+        ch: pika.channel.Channel, 
+        method: pika.spec.Basic.Deliver, 
+        properties: pika.spec.BasicProperties, 
+        body: bytes):
+        """do last-second validation before handling the callback
+
+        :param ch: pika channel
+        :type ch: pika.channel.Channel
+        :param method: pike method
+        :type method: pika.spec.Basic.Deliver
+        :param properties: pika properties
+        :type properties: pika.spec.BasicProperties
+        :param body: message body
+        :type body: bytes
+        """
         self._validate_body(body)
 
         self.logger.info("entering callback")
-
         thread = threading.Thread(target=self.callback, args=(body, properties))
         thread.start()
         while thread.is_alive():
@@ -157,8 +179,12 @@ class Worker():
 
         self.rmq_recv_channel.basic_ack(delivery_tag=method.delivery_tag)
 
-    def _validate_body(self, body):
-        """validate incoming messages from RabbitMQ"""
+    def _validate_body(self, body: bytes):
+        """apply subclass worker schema and validate
+
+        :param body: message body
+        :type body: bytes
+        """
         self.logger.info("validating schema")
         data = json.loads(body)
         # fixed resolver to ensure base schema uri is resolved
@@ -166,10 +192,17 @@ class Worker():
         # resolver = jsonschema.RefResolver('file://{}'.format(os.path.join(self.config['paths']['schemas'], 'binary.json')), self.schema)
         resolver = jsonschema.RefResolver(f"file:{os.path.join(self.config['paths']['schemas'], self.cls_name+'.json')}", self.schema)
 
-        jsonschema.validate(instance=data, schema=self.schema, resolver=resolver)
+        jsonschema.validate(
+            instance=data, 
+            schema=self.schema, 
+            resolver=resolver)
 
-    def _types_valid(self):
-        """ensure that the type queue to bind to is configured in types.json"""
+    def _types_valid(self) -> tuple:
+        """ensure that the type queue to bind to is configured in types.json
+
+        :return: tuple where first element is True if all requested type bindings are valid, or False if not.  If invalid, set the second element to the first discovered invalid type
+        :rtype: tuple
+        """
         for t in self.types:
             if t not in self.config['types']['available_types']:
                 return False, t
@@ -178,8 +211,20 @@ class Worker():
 
     #############################################################
     # RabbitMQ Helpers
-    def get_rmq_conn(self, max_attempts=10, delay_seconds=1):
-        
+    def get_rmq_conn(
+        self, 
+        max_attempts:int=10, 
+        delay_seconds:int=1) -> pika.BlockingConnection:
+        """get RabbitMQ connection instance
+
+        :param max_attempts: max number of attempts to try to get the connection, defaults to 10
+        :type max_attempts: int, optional
+        :param delay_seconds: the delay between attempts to get the connection, defaults to 1
+        :type delay_seconds: int, optional
+        :return: the connection instance
+        :rtype: pika.BlockingConnection
+        """
+
         rabbitmq_user = self.config['rabbitmq']['rabbitmq_user']
         rabbitmq_password = self.config['rabbitmq']['rabbitmq_password']
         rabbitmq_host = self.config['rabbitmq']['rabbitmq_host']
@@ -223,16 +268,33 @@ class Worker():
             self.rmq_recv_channel.stop_consuming()
         self.connection.close()
 
-    def callback(self, data, properties):
-        """implement in subclass"""
+    def callback(self, data: bytes, properties: pika.spec.BasicProperties):
+        """callback for worker, implement in subclass
+
+        :param data: incoming string payload
+        :type data: bytes
+        :param properties: message properties
+        :type properties: pika.spec.BasicProperties
+        :raises NotImplementedError:
+        """
         raise NotImplementedError
 
-    def publish_next(self, data):
-        """publish to configured next_queues"""
+    def publish_next(self, data: bytes):
+        """publish to configured next_queues
+
+        :param data: the data to publish
+        :type data: bytes
+        """
         self.publish(data, queues=self.next_queues)
 
-    def publish(self, data, queues):
-        """publish directly to a list of arbitrary queues"""
+    def publish(self, data: bytes, queues: list):
+        """publish directly to a list of arbitrary queues
+
+        :param data: the data to publish
+        :type data: bytes
+        :param queues: the list of queue names (as strings) to publish data to
+        :type queues: list
+        """
         rmq_conn = self.get_rmq_conn()
         for q in queues:
             self.logger.info(f"publishing directly to {q}")
@@ -248,7 +310,20 @@ class Worker():
     #############################################################
     # DB Helpers
 
-    def get_graph(self, max_attempts=5, delay_seconds=1):
+    def get_graph(
+        self, 
+        max_attempts:int=5, 
+        delay_seconds:int=1) -> pyorient.ogm.Graph:
+        """get an instance of the OrientDB graph
+
+        :param max_attempts: max number of attempts to try to get the connection, defaults to 10
+        :type max_attempts: int, optional
+        :param delay_seconds: the delay between attempts to get the connection, defaults to 1
+        :type delay_seconds: int, optional
+        :return: the graph instance
+        :rtype: pyorient.ogm.Graph
+        """
+
         host = self.config['orientdb']['orientdb_host']
         port = self.config['orientdb']['orientdb_port']
         name = self.config['orientdb']['orientdb_name']
@@ -279,8 +354,12 @@ class Worker():
 
         return graph
 
-    def resolve_db_node_cls(self, resolved_type):
-        """resolve class given a resolved machina type (e.g. in types.json)"""
+    def resolve_db_node_cls(self, resolved_type: str) -> Node:
+        """resolve a Node subclass given a resolved machina type (e.g. in types.json)
+
+        :return: the type string to resolve to a class
+        :rtype: str
+        """
         all_models = Node.__subclasses__()
         for c in all_models:
             if c.element_type.lower() == resolved_type.lower():
@@ -290,16 +369,20 @@ class Worker():
 
     def update_node(
         self, 
-        node_id,
-        data,
-        max_retries=10, 
-        delay_seconds=1):
-        """
-        wrap nodde/vertex updating with retries to circumvent stale state
-        :param node_id: the node id to resolve
-        :param data: a dict containing the data you want to update/set in the node
-        :param max_retries: max number of retries
-        :return:
+        node_id: str,
+        data: dict,
+        max_retries:int=10, 
+        delay_seconds:int=1):
+        """wrap nodde/vertex updating with retries to circumvent stale state
+
+        :param node_id: the id of the node to update
+        :type node_id: str
+        :param data: the data to update the node with
+        :type data: dict
+        :param max_retries: the max number of retries to try to get a handle and save the node, defaults to 10
+        :type max_retries: int, optional
+        :param delay_seconds: the delay in seconds to apply for each attempt, defaults to 1
+        :type delay_seconds: int, optional
         """
         attempts = 0
         while attempts < max_retries:
@@ -317,23 +400,30 @@ class Worker():
 
     def create_edge(
         self, 
-        relationship, 
-        origin_node_id, 
-        destination_node_id, 
-        data={}, 
-        max_retries=10, 
-        delay_seconds=1):
-        """
-        wrap create_edge in retries, as advised by
-        http://orientdb.com/docs/last/Concurrency.html
-        to circumvent stale vertex selects
-        also refresh the vertex select each time by re-resolving based on its id
+        relationship: Relationship, 
+        origin_node_id: str, 
+        destination_node_id: str, 
+        data:dict={}, 
+        max_retries:int=10, 
+        delay_seconds:int=1) -> Relationship:
+        """wrap create_edge in retries, as advised by http://orientdb.com/docs/last/Concurrency.html to circumvent stale vertex selects also refresh the vertex select each time by re-resolving based on its id
+
         :param relationship: Relationship class to apply to the edge
+        :type relationship: Relationship
         :param origin_node_id: the origin/source node id to resolve
+        :type origin_node_id: str
         :param destination_node_id: the destination node id to resolve
-        :param max_retries: max number of retries
-        :return: the edge created, None if not created
+        :type destination_node_id: str
+        :param data: the optional data to apply to the edge, defaults to {}
+        :type data: dict, optional
+        :param max_retries: max number of retries to resolve the nodes and apply the relationship, defaults to 10
+        :type max_retries: int, optional
+        :param delay_seconds: the delay in seconds per retry, defaults to 1
+        :type delay_seconds: int, optional
+        :return: the created Relationship if successful, else None
+        :rtype: Relationship
         """
+
         attempts = 0
         edge = None
         while attempts < max_retries:
@@ -352,7 +442,16 @@ class Worker():
 
     #############################################################
     # Misc
-    def get_binary_path(self, ts, md5):
+    def get_binary_path(self, ts:str, md5:str) -> str:
+        """get path to a binary on disk given a timestamp and its md5
+
+        :param ts: the timestamp of the binary
+        :type ts: str
+        :param md5: the md5 of the binary
+        :type md5: str
+        :return: the path to the binary
+        :rtype: str
+        """
         binary_path = os.path.join(self.config['paths']['binaries'], ts, md5)
         return binary_path
 #############################################################
