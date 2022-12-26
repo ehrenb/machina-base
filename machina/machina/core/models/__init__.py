@@ -6,6 +6,7 @@ Relationship = declarative_relationship()
 
 from machina.core.models.nodes.artifact import Artifact
 from machina.core.models.nodes.apk import APK
+from machina.core.models.nodes.bz2 import BZ2
 from machina.core.models.nodes.cpio import CPIO
 from machina.core.models.nodes.dex import Dex
 from machina.core.models.nodes.elf import Elf

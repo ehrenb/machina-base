@@ -285,6 +285,8 @@ class Worker():
         :param data: the data to publish
         :type data: bytes
         """
+        if not self.next_queues:
+            self.logger.warn('attempting to publish to next queue, but no next_queues defined in worker class')
         self.publish(data, queues=self.next_queues)
 
     def publish(self, data: bytes, queues: list):
