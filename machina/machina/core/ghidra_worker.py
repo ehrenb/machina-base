@@ -3,8 +3,10 @@ import logging
 import os
 from pathlib import Path
 from pprint import pformat
-from typing import List, Tuple
+import shlex
 import sys
+import subprocess
+from typing import List, Tuple
 
 from machina.core.worker import Worker
 
@@ -21,7 +23,7 @@ class GhidraWorker(Worker):
         self.config['worker'].update(self._load_ghidra_configs()['worker'])
         
         # set GHIDRA_MAXMEM env var which is used in the patched analyzeHeadless script to control max memory
-        os.environ['GHIDRA_MAXMEM'] = self.config['worker']['maxmem']
+        # os.environ['GHIDRA_MAXMEM'] = self.config['worker']['maxmem']
 
         # update base configs
         self.gihdra_analyzeheadless_path = Path(os.environ['GHIDRA_HOME'], 'support', 'analyzeHeadless')
@@ -38,12 +40,12 @@ class GhidraWorker(Worker):
 
         # Base-worker configurations, will be overridden by worker-specifc
         # configurations if there is overlap
-        base_worker_cfg_fp = os.path.join(fdir, 'workers', 'GhidraWorker.json')
+        base_worker_cfg_fp = Path(fdir, 'workers', 'GhidraWorker.json')
         with open(base_worker_cfg_fp, 'r') as f:
             worker_cfg = json.load(f)
 
         # Worker-specific configuration
-        worker_cfg_fp = os.path.join(fdir, 'workers', self.cls_name+'.json')
+        worker_cfg_fp = Path(fdir, 'workers', self.cls_name+'.json')
         with open(worker_cfg_fp, 'r') as f:
             worker_cfg.update(json.load(f))
 
@@ -65,7 +67,7 @@ class GhidraWorker(Worker):
         overwrite: bool=False,
         recursive: bool=False,
         read_only: bool=False,
-        delete_poject: bool=False,
+        delete_project: bool=False,
         no_analysis: bool=False,
         analysis_timeout_per_file: int=300
         ):
@@ -79,9 +81,9 @@ class GhidraWorker(Worker):
         :type import_files: List[str], optional
         :param process: perform processing (pre/post scripts and/or analysis) on files in the list.  if not set, all files in project_name will be analyzed. cannot be set with 'import_files'
         :type process: List[str], optional
-        :param pre_script: a list of tuples where the first element in a tuple is the pre script name (with extension), and the second element is a list of strings containing arguments (if any) for the script. example: [ ('prescript1.java', ['-my-arg1','-my1-arg2]), ('prescript2.java', ['-my2-arg1','-my2-arg2]) ] defaults to []
+        :param pre_script: a list of tuples where the first element in a tuple is the pre script name (with extension), and the second element is a list of strings containing arguments (if any) for the script. example: [ ('prescript1.java', ['-my-arg1','-my1-arg2']), ('prescript2.java', ['-my2-arg1','-my2-arg2']) ] defaults to []
         :type pre_script: List[Tuple[str,List[str]]], optional
-        :param post_script: a list of tuples where the first element in a tuple is the post script name (with extension), and the second element is a list of strings containing arguments (if any) for the script. example: [ ('postcript1.java', ['-my-arg1','-my1-arg2]), ('postscript2.java', ['-my2-arg1','-my2-arg2]) ] defaults to []
+        :param post_script: a list of tuples where the first element in a tuple is the post script name (with extension), and the second element is a list of strings containing arguments (if any) for the script. example: [ ('postcript1.java', ['-my-arg1','-my1-arg2']), ('postscript2.java', ['-my2-arg1','-my2-arg2']) ] defaults to []
         :type post_script: List[Tuple[str,List[str]]], optional
         :param ovewrite: overwrite any existing project files that conflict with the ones being imported.  applies only if 'import' is set, and is ignored if 'read_only' is set. defaults to False
         :type overwrite: bool, optional
@@ -97,16 +99,16 @@ class GhidraWorker(Worker):
 
         """
 
-        if not (import_files and process) or (import_files and process):
+        if not (import_files or process) or (import_files and process):
             self.logger.error('import_files OR process must be set')
             return
 
         cmd = f'{self.gihdra_analyzeheadless_path} {project_location} {project_name} '
 
         if import_files:
-            cmd += ' '.join(import_files) + ' '
+            cmd += '-import ' + ' '.join(import_files) + ' '
         if process:
-            cmd += ' '.join(process) + ' '
+            cmd += '-process ' + ' '.join(process) + ' '
 
         for script_cfg in pre_script:
             script_name = script_cfg[0]
@@ -126,6 +128,9 @@ class GhidraWorker(Worker):
 
         if overwrite:
             cmd += '-overwrite '
+            # https://static.grumpycoder.net/pixel/support/analyzeHeadlessREADME.html#overwrite
+            if not import_files:
+                self.logger.warn('overwrite only applies when import_files specified')
 
         if recursive:
             cmd += '-recursive '
@@ -133,7 +138,11 @@ class GhidraWorker(Worker):
         if read_only:
             cmd += '-readOnly '
 
-        if delete_poject:
+            # https://static.grumpycoder.net/pixel/support/analyzeHeadlessREADME.html#readOnly
+            if import_files and overwrite:
+                self.logger.warn('overwrite option ignored')
+
+        if delete_project:
             cmd += '-deleteProject '
 
         if no_analysis:
@@ -144,7 +153,9 @@ class GhidraWorker(Worker):
         cmd += f'-max-cpu {self.config["worker"]["max_cpu"]}'
 
         self.logger.debug(f"running command: {cmd}")
-
+        p = subprocess.run(
+            shlex.split(cmd),
+            env={'GHIDRA_MAXMEM':self.config['worker']['maxmem']})
     #############################################################
 
         # :param pre_script: a list of tuples where the first element in a tuple is the script name (with extension), and the second element is a list of strings containing arguments (if any) for the script, defaults to []

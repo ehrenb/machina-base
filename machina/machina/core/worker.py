@@ -1,6 +1,6 @@
 import json
 import logging
-import os
+from pathlib import Path
 from pprint import pformat
 import threading
 import time
@@ -102,34 +102,34 @@ class Worker():
 
         fdir = '/configs'
 
-        paths_cfg_fp = os.path.join(fdir, 'paths.json')
+        paths_cfg_fp = Path(fdir, 'paths.json')
         with open(paths_cfg_fp, 'r') as f:
             paths_cfg = json.load(f)
 
-        rabbitmq_cfg_fp = os.path.join(fdir, 'rabbitmq.json')
+        rabbitmq_cfg_fp = Path(fdir, 'rabbitmq.json')
         with open(rabbitmq_cfg_fp, 'r') as f:
             rabbitmq_cfg = json.load(f)
 
-        rethinkdb_cfg_fp = os.path.join(fdir, 'rabbitmq.json')
+        rethinkdb_cfg_fp = Path(fdir, 'rabbitmq.json')
         with open(rethinkdb_cfg_fp, 'r') as f:
             rethinkdb_cfg = json.load(f)
 
-        orientdb_cfg_fp = os.path.join(fdir, 'orientdb.json')
+        orientdb_cfg_fp = Path(fdir, 'orientdb.json')
         with open(orientdb_cfg_fp, 'r') as f:
             orientdb_cfg = json.load(f)
 
-        types_fp = os.path.join(fdir, 'types.json')
+        types_fp = Path(fdir, 'types.json')
         with open(types_fp, 'r') as f:
             types_cfg = json.load(f)
 
         # Base-worker configurations, will be overridden by worker-specifc
         # configurations if there is overlap
-        base_worker_cfg_fp = os.path.join(fdir, 'workers', 'Worker.json')
+        base_worker_cfg_fp = Path(fdir, 'workers', 'Worker.json')
         with open(base_worker_cfg_fp, 'r') as f:
             worker_cfg = json.load(f)
 
         # Worker-specific configuration
-        worker_cfg_fp = os.path.join(fdir, 'workers', self.cls_name+'.json')
+        worker_cfg_fp = Path(fdir, 'workers', self.cls_name+'.json')
         with open(worker_cfg_fp, 'r') as f:
             worker_cfg.update(json.load(f))
 
@@ -146,7 +146,7 @@ class Worker():
         :return: the schema dictionary
         :rtype: dict
         """
-        class_schema = os.path.join(self.config['paths']['schemas'], self.cls_name+'.json')
+        class_schema = Path(self.config['paths']['schemas'], self.cls_name+'.json')
         with open(class_schema, 'r') as f:
             schema_data = json.load(f)
         return schema_data
@@ -190,7 +190,7 @@ class Worker():
         # fixed resolver to ensure base schema uri is resolved
         # e.g. https://stackoverflow.com/questions/53968770/how-to-set-up-local-file-references-in-python-jsonschema-document
         # resolver = jsonschema.RefResolver('file://{}'.format(os.path.join(self.config['paths']['schemas'], 'binary.json')), self.schema)
-        resolver = jsonschema.RefResolver(f"file:{os.path.join(self.config['paths']['schemas'], self.cls_name+'.json')}", self.schema)
+        resolver = jsonschema.RefResolver(f"file:{Path(self.config['paths']['schemas'], self.cls_name+'.json')}", self.schema)
 
         jsonschema.validate(
             instance=data, 
@@ -454,6 +454,6 @@ class Worker():
         :return: the path to the binary
         :rtype: str
         """
-        binary_path = os.path.join(self.config['paths']['binaries'], ts, md5)
-        return binary_path
+        binary_path = Path(self.config['paths']['binaries'], ts, md5)
+        return str(binary_path)
 #############################################################
