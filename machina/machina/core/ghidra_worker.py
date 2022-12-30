@@ -14,7 +14,43 @@ class GhidraWorker(Worker):
     def __init__(self):
         super(GhidraWorker, self).__init__()
 
+        self.logger.info(f"GhidraWorker subclass name: {self.cls_name}")
+
+        # update worker config with GhidraWorker.json base default configurations, 
+        # override with child class if specified.  
+        self.config['worker'].update(self._load_ghidra_configs()['worker'])
+        
+        # set GHIDRA_MAXMEM env var which is used in the patched analyzeHeadless script to control max memory
+        os.environ['GHIDRA_MAXMEM'] = self.config['worker']['maxmem']
+
+        # update base configs
         self.gihdra_analyzeheadless_path = Path(os.environ['GHIDRA_HOME'], 'support', 'analyzeHeadless')
+
+
+    def _load_ghidra_configs(self) -> dict:
+        """reload config again using GhidraWorker.json as default base
+        
+        :return: the configuration dictionary
+        :rtype: dict
+        """
+
+        fdir = '/configs'
+
+        # Base-worker configurations, will be overridden by worker-specifc
+        # configurations if there is overlap
+        base_worker_cfg_fp = os.path.join(fdir, 'workers', 'GhidraWorker.json')
+        with open(base_worker_cfg_fp, 'r') as f:
+            worker_cfg = json.load(f)
+
+        # Worker-specific configuration
+        worker_cfg_fp = os.path.join(fdir, 'workers', self.cls_name+'.json')
+        with open(worker_cfg_fp, 'r') as f:
+            worker_cfg.update(json.load(f))
+
+        return dict(
+            worker=worker_cfg
+        )
+
 
     #############################################################
     # Ghidra API wrappers
@@ -105,9 +141,7 @@ class GhidraWorker(Worker):
 
         cmd += f'-analysisTimeoutPerFile {analysis_timeout_per_file} '
 
-        if os.environ.get('GHIDRA_MAXCPU'):
-            max_cpu = int(os.environ.get('GHIDRA_MAXCPU'))
-            cmd += f'-max-cpu {max_cpu}'
+        cmd += f'-max-cpu {self.config["worker"]["max_cpu"]}'
 
         self.logger.debug(f"running command: {cmd}")
 
