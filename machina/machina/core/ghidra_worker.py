@@ -157,6 +157,3 @@ class GhidraWorker(Worker):
             shlex.split(cmd),
             env={'GHIDRA_MAXMEM':self.config['worker']['maxmem']})
     #############################################################
-
-        # :param pre_script: a list of tuples where the first element in a tuple is the script name (with extension), and the second element is a list of strings containing arguments (if any) for the script, defaults to []
-        # :type pre_script: List[Tuple[str,[str]]], optional
