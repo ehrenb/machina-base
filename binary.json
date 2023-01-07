@@ -9,8 +9,8 @@
             },
             "required": ["md5", "sha256"]
         },
-        "id": {"type": "string"},
+        "uid": {"type": "string"},
         "type": {"type": "string"}
     },
-    "required": ["ts", "hashes", "id"]
+    "required": ["ts", "hashes", "uid"]
 }

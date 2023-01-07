@@ -1,18 +1,9 @@
-from pyorient.ogm.property import String, Long, DateTime, EmbeddedMap
+from neomodel import JSONProperty
 
-from machina.core.models import Node
+from machina.core.models import Base
 
-class JPEG(Node):
-    element_plural = 'jpegs'
-    element_type = 'jpeg'
-
-    # Common attributes
-    md5 = String(nullable=False)
-    sha256 = String(nullable=False)
-    size = Long(nullable=False)
-    ts = DateTime(nullable=False)
-    type = String(nullable=False)
-    ssdeep = String(nullable=True)
+class JPEG(Base):
+    """JPEF Image file"""
 
     # PNG attributes
-    exif = EmbeddedMap()
+    exif = JSONProperty()

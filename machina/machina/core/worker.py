@@ -9,14 +9,17 @@ import sys
 
 import jsonschema
 import pika
-import pyorient
-from pyorient.ogm import Graph, Config
+
+# import pyorient
+# from pyorient.ogm import Graph, Config
 
 # Import any new Nodes or Relationships here, they will be
 # Automatically created with a call to init_orientdb()
 
 # import all Nodes and Relationships
-from machina.core.models import *
+from machina.core.models import Base
+
+from neomodel import config
 
 class Worker():
     """Analysis worker base class"""
@@ -41,14 +44,18 @@ class Worker():
             raise Exception
 
         # OrientDB Connection
-        self.logger.debug(f"OrientDB cfg: {pformat(self.config['orientdb'])}")
-        self.graph = self.get_graph()
+        # self.logger.debug(f"OrientDB cfg: {pformat(self.config['orientdb'])}")
+        # self.graph = self.get_graph()
+
+        # neo4j set connection
+        _cfg = self.config['neo4j']
+        config.DATABASE_URL = f"bolt://{_cfg['user']}:{_cfg['pass']}@{_cfg['host']}:{_cfg['port']}/{_cfg['db_name']}"
 
         # if regular worker, bind OGM classes,
         # Initializer does initial OGM creation
-        if self.cls_name != 'Initializer':
-            self.graph.include(Node.registry)
-            self.graph.include(Relationship.registry)
+        # if self.cls_name != 'Initializer':
+        #     self.graph.include(Node.registry)
+        #     self.graph.include(Relationship.registry)
 
         # Initializer does no queue consumption, so
         # dont create a connection or queue for it
@@ -110,13 +117,9 @@ class Worker():
         with open(rabbitmq_cfg_fp, 'r') as f:
             rabbitmq_cfg = json.load(f)
 
-        rethinkdb_cfg_fp = Path(fdir, 'rabbitmq.json')
-        with open(rethinkdb_cfg_fp, 'r') as f:
-            rethinkdb_cfg = json.load(f)
-
-        orientdb_cfg_fp = Path(fdir, 'orientdb.json')
-        with open(orientdb_cfg_fp, 'r') as f:
-            orientdb_cfg = json.load(f)
+        neo4j_cfg_fp = Path(fdir, 'neo4j.json')
+        with open(neo4j_cfg_fp, 'r') as f:
+            neo4j_cfg = json.load(f)
 
         types_fp = Path(fdir, 'types.json')
         with open(types_fp, 'r') as f:
@@ -135,8 +138,7 @@ class Worker():
 
         return dict(paths=paths_cfg,
                     rabbitmq=rabbitmq_cfg,
-                    rethinkdb=rethinkdb_cfg,
-                    orientdb=orientdb_cfg,
+                    neo4j=neo4j_cfg,
                     types=types_cfg,
                     worker=worker_cfg)
 
@@ -312,134 +314,134 @@ class Worker():
     #############################################################
     # DB Helpers
 
-    def get_graph(
-        self, 
-        max_attempts:int=5, 
-        delay_seconds:int=1) -> pyorient.ogm.Graph:
-        """get an instance of the OrientDB graph
+    # def get_graph(
+    #     self, 
+    #     max_attempts:int=5, 
+    #     delay_seconds:int=1) -> pyorient.ogm.Graph:
+    #     """get an instance of the OrientDB graph
 
-        :param max_attempts: max number of attempts to try to get the connection, defaults to 10
-        :type max_attempts: int, optional
-        :param delay_seconds: the delay between attempts to get the connection, defaults to 1
-        :type delay_seconds: int, optional
-        :return: the graph instance
-        :rtype: pyorient.ogm.Graph
-        """
+    #     :param max_attempts: max number of attempts to try to get the connection, defaults to 10
+    #     :type max_attempts: int, optional
+    #     :param delay_seconds: the delay between attempts to get the connection, defaults to 1
+    #     :type delay_seconds: int, optional
+    #     :return: the graph instance
+    #     :rtype: pyorient.ogm.Graph
+    #     """
 
-        host = self.config['orientdb']['orientdb_host']
-        port = self.config['orientdb']['orientdb_port']
-        name = self.config['orientdb']['orientdb_name']
-        user = self.config['orientdb']['orientdb_user']
-        password = self.config['orientdb']['orientdb_pass']
+    #     host = self.config['orientdb']['orientdb_host']
+    #     port = self.config['orientdb']['orientdb_port']
+    #     name = self.config['orientdb']['orientdb_name']
+    #     user = self.config['orientdb']['orientdb_user']
+    #     password = self.config['orientdb']['orientdb_pass']
         
-        orientdb_url = f'{host}:{port}/{name}'
-        conf = Config.from_url(
-            orientdb_url, 
-            user, 
-            password)
+    #     orientdb_url = f'{host}:{port}/{name}'
+    #     conf = Config.from_url(
+    #         orientdb_url, 
+    #         user, 
+    #         password)
 
-        attempts = 0
-        graph = None
-        while attempts < max_attempts:
-            try:
-                graph = Graph(conf)
-                break
-            except Exception as e:
-                self.logger.warn(e)
+    #     attempts = 0
+    #     graph = None
+    #     while attempts < max_attempts:
+    #         try:
+    #             graph = Graph(conf)
+    #             break
+    #         except Exception as e:
+    #             self.logger.warn(e)
             
-            attempts += 1
-            time.sleep(delay_seconds)
+    #         attempts += 1
+    #         time.sleep(delay_seconds)
 
-        if not graph:
-            self.logger.error('max attempts to connect to graph exceeded')
-            sys.exit()
+    #     if not graph:
+    #         self.logger.error('max attempts to connect to graph exceeded')
+    #         sys.exit()
 
-        return graph
+    #     return graph
 
-    def resolve_db_node_cls(self, resolved_type: str) -> Node:
+    def resolve_db_node_cls(self, resolved_type: str) -> Base:
         """resolve a Node subclass given a resolved machina type (e.g. in types.json)
 
         :return: the type string to resolve to a class
         :rtype: str
         """
-        all_models = Node.__subclasses__()
+        all_models = Base.__subclasses__()
         for c in all_models:
-            if c.element_type.lower() == resolved_type.lower():
-            # if c.__name__.lower() == resolved_type.lower():
+            # if c.element_type.lower() == resolved_type.lower():
+            if c.__name__.lower() == resolved_type.lower():
                 return c
         return None
 
-    def update_node(
-        self, 
-        node_id: str,
-        data: dict,
-        max_retries:int=10, 
-        delay_seconds:int=1):
-        """wrap nodde/vertex updating with retries to circumvent stale state
+    # def update_node(
+    #     self, 
+    #     node_id: str,
+    #     data: dict,
+    #     max_retries:int=10, 
+    #     delay_seconds:int=1):
+    #     """wrap nodde/vertex updating with retries to circumvent stale state
 
-        :param node_id: the id of the node to update
-        :type node_id: str
-        :param data: the data to update the node with
-        :type data: dict
-        :param max_retries: the max number of retries to try to get a handle and save the node, defaults to 10
-        :type max_retries: int, optional
-        :param delay_seconds: the delay in seconds to apply for each attempt, defaults to 1
-        :type delay_seconds: int, optional
-        """
-        attempts = 0
-        while attempts < max_retries:
-            try:
-                node = self.graph.get_vertex(node_id)
-                for k,v in data.items():
-                    # node[k] = v
-                    setattr(node, k, v)
-                node.save()
-                break
-            except pyorient.exceptions.PyOrientCommandException:
-                self.logger.warn(f"Retrying update_node attempt {attempts}/{max_retries}")
-                attempts += 1
-                time.sleep(delay_seconds)
+    #     :param node_id: the id of the node to update
+    #     :type node_id: str
+    #     :param data: the data to update the node with
+    #     :type data: dict
+    #     :param max_retries: the max number of retries to try to get a handle and save the node, defaults to 10
+    #     :type max_retries: int, optional
+    #     :param delay_seconds: the delay in seconds to apply for each attempt, defaults to 1
+    #     :type delay_seconds: int, optional
+    #     """
+    #     attempts = 0
+    #     while attempts < max_retries:
+    #         try:
+    #             node = self.graph.get_vertex(node_id)
+    #             for k,v in data.items():
+    #                 # node[k] = v
+    #                 setattr(node, k, v)
+    #             node.save()
+    #             break
+    #         except pyorient.exceptions.PyOrientCommandException:
+    #             self.logger.warn(f"Retrying update_node attempt {attempts}/{max_retries}")
+    #             attempts += 1
+    #             time.sleep(delay_seconds)
 
-    def create_edge(
-        self, 
-        relationship: Relationship, 
-        origin_node_id: str, 
-        destination_node_id: str, 
-        data:dict={}, 
-        max_retries:int=10, 
-        delay_seconds:int=1) -> Relationship:
-        """wrap create_edge in retries, as advised by http://orientdb.com/docs/last/Concurrency.html to circumvent stale vertex selects also refresh the vertex select each time by re-resolving based on its id
+    # def create_edge(
+    #     self, 
+    #     relationship: Relationship, 
+    #     origin_node_id: str, 
+    #     destination_node_id: str, 
+    #     data:dict={}, 
+    #     max_retries:int=10, 
+    #     delay_seconds:int=1) -> Relationship:
+    #     """wrap create_edge in retries, as advised by http://orientdb.com/docs/last/Concurrency.html to circumvent stale vertex selects also refresh the vertex select each time by re-resolving based on its id
 
-        :param relationship: Relationship class to apply to the edge
-        :type relationship: Relationship
-        :param origin_node_id: the origin/source node id to resolve
-        :type origin_node_id: str
-        :param destination_node_id: the destination node id to resolve
-        :type destination_node_id: str
-        :param data: the optional data to apply to the edge, defaults to {}
-        :type data: dict, optional
-        :param max_retries: max number of retries to resolve the nodes and apply the relationship, defaults to 10
-        :type max_retries: int, optional
-        :param delay_seconds: the delay in seconds per retry, defaults to 1
-        :type delay_seconds: int, optional
-        :return: the created Relationship if successful, else None
-        :rtype: Relationship
-        """
+    #     :param relationship: Relationship class to apply to the edge
+    #     :type relationship: Relationship
+    #     :param origin_node_id: the origin/source node id to resolve
+    #     :type origin_node_id: str
+    #     :param destination_node_id: the destination node id to resolve
+    #     :type destination_node_id: str
+    #     :param data: the optional data to apply to the edge, defaults to {}
+    #     :type data: dict, optional
+    #     :param max_retries: max number of retries to resolve the nodes and apply the relationship, defaults to 10
+    #     :type max_retries: int, optional
+    #     :param delay_seconds: the delay in seconds per retry, defaults to 1
+    #     :type delay_seconds: int, optional
+    #     :return: the created Relationship if successful, else None
+    #     :rtype: Relationship
+    #     """
 
-        attempts = 0
-        edge = None
-        while attempts < max_retries:
-            try:
-                # Re-resolve the vertices, because they may have become stale
-                origin_node = self.graph.get_vertex(origin_node_id)
-                destination_node = self.graph.get_vertex(destination_node_id)
-                edge = self.graph.create_edge(relationship, origin_node, destination_node, **data)
-                break
-            except pyorient.exceptions.PyOrientCommandException:
-                self.logger.warn(f"Retrying create_edge attempt {attempts}/{max_retries}")
-                attempts += 1
-                time.sleep(delay_seconds)
-        return edge
+    #     attempts = 0
+    #     edge = None
+    #     while attempts < max_retries:
+    #         try:
+    #             # Re-resolve the vertices, because they may have become stale
+    #             origin_node = self.graph.get_vertex(origin_node_id)
+    #             destination_node = self.graph.get_vertex(destination_node_id)
+    #             edge = self.graph.create_edge(relationship, origin_node, destination_node, **data)
+    #             break
+    #         except pyorient.exceptions.PyOrientCommandException:
+    #             self.logger.warn(f"Retrying create_edge attempt {attempts}/{max_retries}")
+    #             attempts += 1
+    #             time.sleep(delay_seconds)
+    #     return edge
     #############################################################
 
     #############################################################

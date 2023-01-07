@@ -1,10 +1,7 @@
 
-from pyorient.ogm.declarative import declarative_node, declarative_relationship
-
-Node = declarative_node()
-Relationship = declarative_relationship()    
-
+from machina.core.models.nodes.base import Base
 from machina.core.models.nodes.artifact import Artifact
+
 from machina.core.models.nodes.apk import APK
 from machina.core.models.nodes.bz2 import BZ2
 from machina.core.models.nodes.cpio import CPIO
@@ -33,6 +30,7 @@ from machina.core.models.nodes.word import Word
 from machina.core.models.nodes.zip import Zip
 
 # Relationships
+from machina.core.models.relationships.base import BaseRelationship
 from machina.core.models.relationships.extracts import Extracts
-from machina.core.models.relationships.retypedto import RetypedTo
-from machina.core.models.relationships.similar import Similar
+from machina.core.models.relationships.retyped import Retyped
+# from machina.core.models.relationships.similar import Similar

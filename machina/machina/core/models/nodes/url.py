@@ -1,12 +1,11 @@
-from pyorient.ogm.property import String, Integer
+from neomodel import StringProperty
 
-from machina.core.models import Node
+from machina.core.models import Base
 
-class URL(Node):
-    element_plural = 'urls'
-    element_type = 'url'
+class URL(Base):
+    """extracted URL"""
 
     # URL Attribute
-    url = String()
+    url = StringProperty()
 
-    ssdeep = String(nullable=True)
+    # ssdeep = StringProperty()
