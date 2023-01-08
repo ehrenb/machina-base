@@ -3,13 +3,8 @@ name: Publish Docker image (Alpine)
 on:
   workflow_dispatch:
   push:
-    branches:
-      - 'main'
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - 'main'
     
 jobs:
   push_to_registry:
@@ -61,7 +56,7 @@ jobs:
       - name: "Create release"
         uses: "actions/github-script@v5"
         with:
-          github-token: "${{ secrets.ERGEBNIS_BOT_TOKEN }}"
+          github-token: "${{ secrets.GITHUB_TOKEN  }}"
           script: |
             try {
               await github.rest.repos.createRelease({
