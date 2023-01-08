@@ -7,22 +7,18 @@ import time
 import typing
 import sys
 
+from machina.core.models import Artifact, Base
+
 import jsonschema
+from neomodel import config
 import pika
-import pyorient
-from pyorient.ogm import Graph, Config
-
-# Import any new Nodes or Relationships here, they will be
-# Automatically created with a call to init_orientdb()
-
-# import all Nodes and Relationships
-from machina.core.models import *
 
 class Worker():
     """Analysis worker base class"""
 
     next_queues = [] # passes data to another queue in the sequence, this should allow for chaining
-    types = [] #indicates what queue to bind to, this should be completed in the subclass
+    types = [] # indicates what type data to bind to, this should be completed in the subclass
+    types_blacklist = [] # indicates what type data NOT to bind to, this should be completed in the subclass. implies binding to all types not in this list.  cannot be combined with types
 
     def __init__(self):
         self.cls_name = self.__class__.__name__
@@ -34,21 +30,37 @@ class Worker():
         logging.basicConfig(level=level, format='[*] %(message)s')
         self.logger = logging.getLogger(__name__)
 
-        self.logger.info(f"Validating types: {pformat(self.types)}")
-        types_valid, t = self._types_valid()
-        if not types_valid:
-            self.logger.error(f"{t} is not configured as a type in types.json")
+        if self.types and self.types_blacklist:
+            self.logger.error("both types and types_blacklist cannot be set at the same time")
             raise Exception
 
-        # OrientDB Connection
-        self.logger.debug(f"OrientDB cfg: {pformat(self.config['orientdb'])}")
-        self.graph = self.get_graph()
+        # validate whitelist types
+        # if *, then set types to all available types
+        if self.types:
+            self.logger.info(f"Validating types: {pformat(self.types)}")
+            if '*' in self.types:
+                self.types = self.config['types']['available_types']
+            else:
+                types_valid, t = self._types_valid()
+                if not types_valid:
+                    self.logger.error(f"{t} is not configured as a type in types.json")
+                    raise Exception
 
-        # if regular worker, bind OGM classes,
-        # Initializer does initial OGM creation
-        if self.cls_name != 'Initializer':
-            self.graph.include(Node.registry)
-            self.graph.include(Relationship.registry)
+        # validate black liste types
+        if self.types_blacklist:
+            self.logger.info(f"Validating types blacklist: {pformat(self.types_blacklist)}")
+            types_blacklist_valid, t = self._types_blacklist_valid()
+            if not types_blacklist_valid:
+                self.logger.error(f"{t} is not configured as a type in types.json, so cannot be blacklisted")
+                raise Exception
+            
+            # if valid, set types to all except the ones in valid blacklist, and '*'
+            self.types = [t for t in self.config['types']['available_types'] if t not in self.types_blacklist]
+            # self.types.remove('*')
+
+        # neo4j set connection
+        _cfg = self.config['neo4j']
+        config.DATABASE_URL = f"bolt://{_cfg['user']}:{_cfg['pass']}@{_cfg['host']}:{_cfg['port']}/{_cfg['db_name']}"
 
         # Initializer does no queue consumption, so
         # dont create a connection or queue for it
@@ -74,7 +86,7 @@ class Worker():
 
             # Ensure that the worker's queue is bound to the exchange
             self.rmq_recv_channel.queue_bind(exchange='machina',
-                                    queue=self.cls_name)
+                queue=self.cls_name)
 
             # multiple-bindings approach:
             # https://www.rabbitmq.com/tutorials/tutorial-four-python.html
@@ -82,9 +94,10 @@ class Worker():
             # Publish using only a routing_key should go to all queues
             # that are bound to that routing_key
             for t in self.types:
+                self.logger.info(f'binding to type: {t}')
                 self.rmq_recv_channel.queue_bind(exchange='machina',
-                                        queue=self.cls_name,
-                                        routing_key=t)
+                    queue=self.cls_name,
+                    routing_key=t)
 
             self.rmq_recv_channel.basic_qos(prefetch_count=1)
             self.rmq_recv_channel.basic_consume(self.cls_name,
@@ -110,13 +123,9 @@ class Worker():
         with open(rabbitmq_cfg_fp, 'r') as f:
             rabbitmq_cfg = json.load(f)
 
-        rethinkdb_cfg_fp = Path(fdir, 'rabbitmq.json')
-        with open(rethinkdb_cfg_fp, 'r') as f:
-            rethinkdb_cfg = json.load(f)
-
-        orientdb_cfg_fp = Path(fdir, 'orientdb.json')
-        with open(orientdb_cfg_fp, 'r') as f:
-            orientdb_cfg = json.load(f)
+        neo4j_cfg_fp = Path(fdir, 'neo4j.json')
+        with open(neo4j_cfg_fp, 'r') as f:
+            neo4j_cfg = json.load(f)
 
         types_fp = Path(fdir, 'types.json')
         with open(types_fp, 'r') as f:
@@ -135,8 +144,7 @@ class Worker():
 
         return dict(paths=paths_cfg,
                     rabbitmq=rabbitmq_cfg,
-                    rethinkdb=rethinkdb_cfg,
-                    orientdb=orientdb_cfg,
+                    neo4j=neo4j_cfg,
                     types=types_cfg,
                     worker=worker_cfg)
 
@@ -198,12 +206,23 @@ class Worker():
             resolver=resolver)
 
     def _types_valid(self) -> tuple:
-        """ensure that the type queue to bind to is configured in types.json
+        """ensure that the type to bind to is configured in types.json
 
         :return: tuple where first element is True if all requested type bindings are valid, or False if not.  If invalid, set the second element to the first discovered invalid type
         :rtype: tuple
         """
         for t in self.types:
+            if t not in self.config['types']['available_types']:
+                return False, t
+        return True, None
+
+    def _types_blacklist_valid(self) -> tuple:
+        """ensure that the type to bind to is configured in types.json
+
+        :return: tuple where first element is True if all requested type bindings are valid, or False if not.  If invalid, set the second element to the first discovered invalid type
+        :rtype: tuple
+        """
+        for t in self.types_blacklist:
             if t not in self.config['types']['available_types']:
                 return False, t
         return True, None
@@ -311,135 +330,20 @@ class Worker():
 
     #############################################################
     # DB Helpers
-
-    def get_graph(
-        self, 
-        max_attempts:int=5, 
-        delay_seconds:int=1) -> pyorient.ogm.Graph:
-        """get an instance of the OrientDB graph
-
-        :param max_attempts: max number of attempts to try to get the connection, defaults to 10
-        :type max_attempts: int, optional
-        :param delay_seconds: the delay between attempts to get the connection, defaults to 1
-        :type delay_seconds: int, optional
-        :return: the graph instance
-        :rtype: pyorient.ogm.Graph
-        """
-
-        host = self.config['orientdb']['orientdb_host']
-        port = self.config['orientdb']['orientdb_port']
-        name = self.config['orientdb']['orientdb_name']
-        user = self.config['orientdb']['orientdb_user']
-        password = self.config['orientdb']['orientdb_pass']
-        
-        orientdb_url = f'{host}:{port}/{name}'
-        conf = Config.from_url(
-            orientdb_url, 
-            user, 
-            password)
-
-        attempts = 0
-        graph = None
-        while attempts < max_attempts:
-            try:
-                graph = Graph(conf)
-                break
-            except Exception as e:
-                self.logger.warn(e)
-            
-            attempts += 1
-            time.sleep(delay_seconds)
-
-        if not graph:
-            self.logger.error('max attempts to connect to graph exceeded')
-            sys.exit()
-
-        return graph
-
-    def resolve_db_node_cls(self, resolved_type: str) -> Node:
-        """resolve a Node subclass given a resolved machina type (e.g. in types.json)
+    def resolve_db_node_cls(self, resolved_type: str) -> Base:
+        """resolve a OGM subclass given a resolved machina type (e.g. in types.json)
+        if not resolved, we expect unresolved to be stored as a generic Artifact, so return that cls
 
         :return: the type string to resolve to a class
         :rtype: str
         """
-        all_models = Node.__subclasses__()
+        all_models = Base.__subclasses__()
         for c in all_models:
-            if c.element_type.lower() == resolved_type.lower():
-            # if c.__name__.lower() == resolved_type.lower():
+            # if c.element_type.lower() == resolved_type.lower():
+            if c.__name__.lower() == resolved_type.lower():
                 return c
-        return None
+        return Artifact
 
-    def update_node(
-        self, 
-        node_id: str,
-        data: dict,
-        max_retries:int=10, 
-        delay_seconds:int=1):
-        """wrap nodde/vertex updating with retries to circumvent stale state
-
-        :param node_id: the id of the node to update
-        :type node_id: str
-        :param data: the data to update the node with
-        :type data: dict
-        :param max_retries: the max number of retries to try to get a handle and save the node, defaults to 10
-        :type max_retries: int, optional
-        :param delay_seconds: the delay in seconds to apply for each attempt, defaults to 1
-        :type delay_seconds: int, optional
-        """
-        attempts = 0
-        while attempts < max_retries:
-            try:
-                node = self.graph.get_vertex(node_id)
-                for k,v in data.items():
-                    # node[k] = v
-                    setattr(node, k, v)
-                node.save()
-                break
-            except pyorient.exceptions.PyOrientCommandException:
-                self.logger.warn(f"Retrying update_node attempt {attempts}/{max_retries}")
-                attempts += 1
-                time.sleep(delay_seconds)
-
-    def create_edge(
-        self, 
-        relationship: Relationship, 
-        origin_node_id: str, 
-        destination_node_id: str, 
-        data:dict={}, 
-        max_retries:int=10, 
-        delay_seconds:int=1) -> Relationship:
-        """wrap create_edge in retries, as advised by http://orientdb.com/docs/last/Concurrency.html to circumvent stale vertex selects also refresh the vertex select each time by re-resolving based on its id
-
-        :param relationship: Relationship class to apply to the edge
-        :type relationship: Relationship
-        :param origin_node_id: the origin/source node id to resolve
-        :type origin_node_id: str
-        :param destination_node_id: the destination node id to resolve
-        :type destination_node_id: str
-        :param data: the optional data to apply to the edge, defaults to {}
-        :type data: dict, optional
-        :param max_retries: max number of retries to resolve the nodes and apply the relationship, defaults to 10
-        :type max_retries: int, optional
-        :param delay_seconds: the delay in seconds per retry, defaults to 1
-        :type delay_seconds: int, optional
-        :return: the created Relationship if successful, else None
-        :rtype: Relationship
-        """
-
-        attempts = 0
-        edge = None
-        while attempts < max_retries:
-            try:
-                # Re-resolve the vertices, because they may have become stale
-                origin_node = self.graph.get_vertex(origin_node_id)
-                destination_node = self.graph.get_vertex(destination_node_id)
-                edge = self.graph.create_edge(relationship, origin_node, destination_node, **data)
-                break
-            except pyorient.exceptions.PyOrientCommandException:
-                self.logger.warn(f"Retrying create_edge attempt {attempts}/{max_retries}")
-                attempts += 1
-                time.sleep(delay_seconds)
-        return edge
     #############################################################
 
     #############################################################

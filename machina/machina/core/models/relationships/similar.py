@@ -1,10 +1,9 @@
-from pyorient.ogm.property import Long, EmbeddedMap, String
+from neomodel import JSONProperty
 
-from machina.core.models import Relationship
+from machina.core.models.relationships.base import BaseRelationship
 
-class Similar(Relationship):
+class Similar(BaseRelationship):
     """Establish a node (some binary data) as being
         to another node"""
-    label = 'similar'
 
-    measurements = EmbeddedMap()
+    measurements = JSONProperty()
