@@ -7,5 +7,3 @@ class URL(Base):
 
     # URL Attribute
     url = StringProperty()
-
-    # ssdeep = StringProperty()
