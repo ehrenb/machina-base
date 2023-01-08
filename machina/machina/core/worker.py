@@ -217,7 +217,7 @@ class Worker():
         return True, None
 
     def _types_blacklist_valid(self) -> tuple:
-        """ensure that the type to bind to is configured in types.json
+        """ensure that the type to bind to is configured in types.json 
 
         :return: tuple where first element is True if all requested type bindings are valid, or False if not.  If invalid, set the second element to the first discovered invalid type
         :rtype: tuple
