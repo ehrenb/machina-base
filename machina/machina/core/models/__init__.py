@@ -26,6 +26,7 @@ from machina.core.models.nodes.rtf import RTF
 from machina.core.models.nodes.squashfs import SquashFS
 from machina.core.models.nodes.tar import Tar
 from machina.core.models.nodes.url import URL
+from machina.core.models.nodes.tiff import TIFF
 from machina.core.models.nodes.word import Word
 from machina.core.models.nodes.zip import Zip
 
