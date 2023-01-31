@@ -14,7 +14,7 @@ from neomodel import config
 import pika
 
 class Worker():
-    """Analysis worker base class"""
+    """Analysis worker base class.  Workers inheriting from this class receive data to analyze based on the chosen data type bindings"""
 
     next_queues = [] # passes data to another queue in the sequence, this should allow for chaining
     types = [] # indicates what type data to bind to, this should be completed in the subclass
@@ -46,7 +46,7 @@ class Worker():
                     self.logger.error(f"{t} is not configured as a type in types.json")
                     raise Exception
 
-        # validate black liste types
+        # validate black list types
         if self.types_blacklist:
             self.logger.info(f"Validating types blacklist: {pformat(self.types_blacklist)}")
             types_blacklist_valid, t = self._types_blacklist_valid()
