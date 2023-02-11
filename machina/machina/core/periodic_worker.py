@@ -47,6 +47,10 @@ class PeriodicWorker():
         with open(neo4j_cfg_fp, 'r') as f:
             neo4j_cfg = json.load(f)
 
+        types_fp = Path(fdir, 'types.json')
+        with open(types_fp, 'r') as f:
+            types_cfg = json.load(f)
+
         # Base-worker configurations, will be overridden by worker-specifc
         # configurations if there is overlap
         base_worker_cfg_fp = Path(fdir, 'workers', 'PeriodicWorker.json')
@@ -60,6 +64,7 @@ class PeriodicWorker():
 
         return dict(paths=paths_cfg,
                     neo4j=neo4j_cfg,
+                    types=types_cfg,
                     worker=worker_cfg)
     #############################################################
 
