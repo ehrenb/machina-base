@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 from pathlib import Path
+from typing import Type
 
 from neomodel import config
 from rocketry import Rocketry
@@ -82,7 +83,7 @@ class PeriodicWorker():
     # Triggers
     def n_nodes_added_since(
         n: int, 
-        node_cls: type[Base], 
+        node_cls: Type[Base], 
         duration: timedelta):
         """return True if 'n' nodes of 'node_cls' type have been added within a duration
         of time, return False if either (or both) condition was not met.
