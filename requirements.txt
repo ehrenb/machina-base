@@ -1,4 +1,4 @@
 jsonschema
 pika
 neomodel
-#git+https://github.com/baesystemsFASTLabs/pyorient.git@7e46e166e616bcfea1ccdc31d5e7187f7bbce806#egg=pyorient
+rocketry

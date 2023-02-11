@@ -20,7 +20,7 @@ class Base(StructuredNode):
     ts = DateTimeProperty(required=True)
     type = StringProperty(required=True)
 
-    ssdeep = StringProperty(required=False) # set later
+    ssdeep = StringProperty(default=None) # set later
 
     extracts = RelationshipTo('Base', 'EXTRACTS', model=Extracts)
     similar = Relationship('Base', 'SIMILAR', model=Similar)

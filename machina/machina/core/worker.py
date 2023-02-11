@@ -7,14 +7,14 @@ import time
 import typing
 import sys
 
-from machina.core.models import Artifact, Base
+from machina.core.models import Base
 
 import jsonschema
 from neomodel import config
 import pika
 
 class Worker():
-    """Analysis worker base class"""
+    """Analysis worker base class.  Workers inheriting from this class receive data to analyze based on the chosen data type bindings"""
 
     next_queues = [] # passes data to another queue in the sequence, this should allow for chaining
     types = [] # indicates what type data to bind to, this should be completed in the subclass
@@ -46,7 +46,7 @@ class Worker():
                     self.logger.error(f"{t} is not configured as a type in types.json")
                     raise Exception
 
-        # validate black liste types
+        # validate black list types
         if self.types_blacklist:
             self.logger.info(f"Validating types blacklist: {pformat(self.types_blacklist)}")
             types_blacklist_valid, t = self._types_blacklist_valid()
@@ -325,24 +325,6 @@ class Worker():
                 routing_key=q,
                 body=data)
         rmq_conn.close()
-
-    #############################################################
-
-    #############################################################
-    # DB Helpers
-    def resolve_db_node_cls(self, resolved_type: str) -> Base:
-        """resolve a OGM subclass given a resolved machina type (e.g. in types.json)
-        if not resolved, we expect unresolved to be stored as a generic Artifact, so return that cls
-
-        :return: the type string to resolve to a class
-        :rtype: str
-        """
-        all_models = Base.__subclasses__()
-        for c in all_models:
-            # if c.element_type.lower() == resolved_type.lower():
-            if c.__name__.lower() == resolved_type.lower():
-                return c
-        return Artifact
 
     #############################################################
 
