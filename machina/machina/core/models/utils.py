@@ -17,6 +17,6 @@ def resolve_db_node_cls(resolved_type: str) -> Type[Base]:
             return c
     return Artifact
 
-def db_ts_to_fs_fmt(self, ts:datetime) -> str:
+def db_ts_to_fs_fmt(ts:datetime) -> str:
     """convert database timestamp to file-system formatted timestamp string"""
     return ts.strftime("%Y%m%d%H%M%S%f")
