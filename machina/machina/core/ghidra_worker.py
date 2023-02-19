@@ -85,7 +85,7 @@ class GhidraWorker(Worker):
         :type pre_script: List[Tuple[str,List[str]]], optional
         :param post_script: a list of tuples where the first element in a tuple is the post script name (with extension), and the second element is a list of strings containing arguments (if any) for the script. example: [ ('postcript1.java', ['-my-arg1','-my1-arg2']), ('postscript2.java', ['-my2-arg1','-my2-arg2']) ] defaults to []
         :type post_script: List[Tuple[str,List[str]]], optional
-        :param ovewrite: overwrite any existing project files that conflict with the ones being imported.  applies only if 'import' is set, and is ignored if 'read_only' is set. defaults to False
+        :param overwrite: overwrite any existing project files that conflict with the ones being imported.  applies only if 'import' is set, and is ignored if 'read_only' is set. defaults to False
         :type overwrite: bool, optional
         :param recursive: enables decursive descent into directories and project sub-folders when a directory/folder has been specified in 'import' or 'process'. defaults to False
         :type recursive: bool, optional
