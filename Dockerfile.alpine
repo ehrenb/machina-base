@@ -1,4 +1,4 @@
-FROM alpine:3.17
+FROM alpine:3.19
 
 RUN apk --update add --no-cache \
         alpine-sdk \
@@ -19,24 +19,16 @@ RUN apk --update add --no-cache \
         openssl-dev \
         python3 \
         python3-dev \
+        py3-pip \
         geos-dev
 
-RUN python3 -m ensurepip && \
-    rm -r /usr/lib/python*/ensurepip
+# https://stackoverflow.com/questions/75608323/how-do-i-solve-error-externally-managed-environment-every-time-i-use-pip-3
+RUN rm /usr/lib/python3.11/EXTERNALLY-MANAGED
 
-RUN pip3 install --trusted-host pypi.org \
-                --trusted-host pypi.python.org \
-                --trusted-host files.pythonhosted.org \
-                --upgrade pip setuptools && \
-    if [ ! -e /usr/bin/pip ]; then ln -s pip3 /usr/bin/pip ; fi && \
-    if [[ ! -e /usr/bin/python ]]; then ln -sf /usr/bin/python3 /usr/bin/python; fi && \
-    rm -r /root/.cache
+RUN pip3 install --upgrade pip setuptools
 
 COPY requirements.txt /tmp/
-RUN pip3 install --trusted-host pypi.org \
-                --trusted-host pypi.python.org \
-                --trusted-host files.pythonhosted.org \
-                -r /tmp/requirements.txt
+RUN pip3 install -r /tmp/requirements.txt
 RUN rm /tmp/requirements.txt
 
 RUN mkdir /schemas
