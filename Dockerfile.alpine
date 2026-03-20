@@ -1,4 +1,4 @@
-FROM alpine:3.19
+FROM alpine:3.23
 
 RUN apk --update add --no-cache \
         alpine-sdk \
@@ -22,21 +22,17 @@ RUN apk --update add --no-cache \
         py3-pip \
         geos-dev
 
-# https://stackoverflow.com/questions/75608323/how-do-i-solve-error-externally-managed-environment-every-time-i-use-pip-3
-RUN rm /usr/lib/python3.11/EXTERNALLY-MANAGED
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ENV POETRY_VIRTUALENVS_CREATE=false
 
-RUN pip3 install --upgrade pip setuptools
-
-COPY requirements.txt /tmp/
-RUN pip3 install -r /tmp/requirements.txt
-RUN rm /tmp/requirements.txt
+RUN pip3 install poetry
 
 RUN mkdir /schemas
 COPY binary.json /schemas/
 
 COPY machina /machina
 COPY ./wait-for-it.sh /machina/wait-for-it.sh
-RUN cd /machina && python3 setup.py install
+RUN cd /machina && poetry install
 
 
 WORKDIR /machina

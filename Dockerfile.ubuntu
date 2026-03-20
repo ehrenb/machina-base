@@ -1,4 +1,4 @@
-FROM ubuntu:jammy
+FROM ubuntu:noble
 
 RUN apt-get update && \
     apt-get -y install \
@@ -20,18 +20,17 @@ RUN apt-get update && \
         python3-pip \
         libgeos-dev
 
-RUN pip3 install --upgrade pip setuptools
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+ENV POETRY_VIRTUALENVS_CREATE=false
 
-COPY requirements.txt /tmp/
-RUN pip3 install -r /tmp/requirements.txt
-RUN rm /tmp/requirements.txt
+RUN pip3 install poetry
 
 RUN mkdir /schemas
 COPY binary.json /schemas/
 
 COPY machina /machina
 COPY ./wait-for-it.sh /machina/wait-for-it.sh
-RUN cd /machina && python3 setup.py install
+RUN cd /machina && poetry install
 
 
 WORKDIR /machina

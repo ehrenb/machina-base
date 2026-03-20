@@ -1,0 +1,15 @@
+[project]
+name = "machina"
+description = "A scalable analysis pipeline"
+authors = [{name = "Branden Ehrenreich", email="behren2@protonmail.com"}]
+version = "v0.1"
+license = ""
+requires-python = ">=3.9"
+dependencies = [
+    "jsonschema",
+    "pika",
+    "neomodel",
+    "rocketry",
+    "pydantic==1.10.13"
+]
+
