@@ -285,7 +285,6 @@ class Worker():
         except Exception as e:
             self.logger.error(e, exc_info=True)
             self.rmq_recv_channel.stop_consuming()
-        self.connection.close()
 
     def callback(self, data: bytes, properties: pika.spec.BasicProperties):
         """callback for worker, implement in subclass
