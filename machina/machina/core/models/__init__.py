@@ -9,6 +9,7 @@ from machina.core.models.nodes.dex import Dex
 from machina.core.models.nodes.elf import Elf
 from machina.core.models.nodes.eml import Eml
 from machina.core.models.nodes.excel import Excel
+from machina.core.models.nodes.gif import GIF
 from machina.core.models.nodes.gzip import Gzip
 from machina.core.models.nodes.html import HTML
 from machina.core.models.nodes.jar import Jar
