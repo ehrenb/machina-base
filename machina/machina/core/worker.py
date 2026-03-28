@@ -266,7 +266,7 @@ class Worker():
                 break
             except pika.exceptions.AMQPConnectionError as e:
                 self.logger.info(f"Attempt {attempt}/{max_attempts} to connect to RabbitMQ at {rabbitmq_host}:{rabbitmq_port}")
-                self.logger.warn("Error connecting to RabbitMQ")
+                self.logger.warning("Error connecting to RabbitMQ")
             
             attempt += 1
             time.sleep(delay_seconds)
@@ -304,7 +304,7 @@ class Worker():
         :type data: bytes
         """
         if not self.next_queues:
-            self.logger.warn('attempting to publish to next queue, but no next_queues defined in worker class')
+            self.logger.warning('attempting to publish to next queue, but no next_queues defined in worker class')
         self.publish(data, queues=self.next_queues)
 
     def publish(self, data: bytes, queues: list):
@@ -329,16 +329,18 @@ class Worker():
 
     #############################################################
     # Misc
-    def get_binary_path(self, ts:str, md5:str) -> str:
-        """get path to a binary on disk given a timestamp and its md5
+    def get_binary_path(self, ts:str, md5:str, type:str) -> str:
+        """get path to a binary on disk given a timestamp, its md5, and its type
 
         :param ts: the timestamp of the binary
         :type ts: str
         :param md5: the md5 of the binary
         :type md5: str
+        :param type: the resolved type of the binary (used as file extension)
+        :type type: str
         :return: the path to the binary
         :rtype: str
         """
-        binary_path = Path(self.config['paths']['binaries'], ts, md5)
+        binary_path = Path(self.config['paths']['binaries'], ts, f"{md5}.{type}")
         return str(binary_path)
 #############################################################

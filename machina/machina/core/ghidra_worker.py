@@ -130,7 +130,7 @@ class GhidraWorker(Worker):
             cmd += '-overwrite '
             # https://static.grumpycoder.net/pixel/support/analyzeHeadlessREADME.html#overwrite
             if not import_files:
-                self.logger.warn('overwrite only applies when import_files specified')
+                self.logger.warning('overwrite only applies when import_files specified')
 
         if recursive:
             cmd += '-recursive '
@@ -140,7 +140,7 @@ class GhidraWorker(Worker):
 
             # https://static.grumpycoder.net/pixel/support/analyzeHeadlessREADME.html#readOnly
             if import_files and overwrite:
-                self.logger.warn('overwrite option ignored')
+                self.logger.warning('overwrite option ignored')
 
         if delete_project:
             cmd += '-deleteProject '
